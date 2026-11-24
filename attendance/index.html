@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>打卡人生｜智慧考勤系統 v1.8</title>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root {
+      --primary: #1a73e8;
+      --primary-dark: #1557b0;
+      --success: #1e8e3e;
+      --warning: #f29900;
+      --danger: #d93025;
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --text: #202124;
+      --muted: #5f6368;
+      --border: #dadce0;
+    }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif; }
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); }
+    .container { max-width: 480px; margin: 0 auto; }
+    .header {
+      background: linear-gradient(135deg, #1a73e8, #0d47a1);
+      color: #fff; padding: 20px; border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(26,115,232,0.2); margin-bottom: 16px;
+    }
+    .header h1 { margin: 0 0 6px 0; font-size: 20px; }
+    .header .sub { font-size: 13px; opacity: 0.9; display: flex; justify-content: space-between; align-items: center; }
+    .badge {
+      display: inline-block; padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600; margin-top: 8px; margin-right: 6px;
+    }
+    .badge-ok { background: #e6f4ea; color: #137333; }
+    .badge-warn { background: #fef7e0; color: #b06000; }
+    .badge-lock { background: #fce8e6; color: #c5221f; }
+    .tabs {
+      display: flex; overflow-x: auto; background: #e8eaed; border-radius: 12px; padding: 4px; margin-bottom: 16px;
+    }
+    .tab-btn {
+      flex: 0 0 auto; border: none; background: transparent; padding: 10px 9px;
+      font-size: 13px; font-weight: 600; color: var(--muted); border-radius: 9px; cursor: pointer; white-space: nowrap;
+    }
+    .tab-btn.active { background: var(--card); color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+    .card {
+      background: var(--card); border-radius: 16px; padding: 18px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 16px;
+    }
+    .section { display: none; }
+    .section.active { display: block; }
+    .info-row { display: flex; justify-content: space-between; font-size: 13px; padding: 6px 0; border-bottom: 1px solid #f1f3f4; }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: var(--muted); }
+    .info-val { font-weight: 600; text-align: right; word-break: break-all; }
+    .shift-label { display: block; margin-top: 14px; color: var(--muted); font-size: 13px; }
+    .punch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+    .btn {
+      width: 100%; border: none; border-radius: 12px; padding: 14px;
+      font-size: 16px; font-weight: 700; cursor: pointer; transition: 0.15s;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-in { background: var(--success); color: #fff; }
+    .btn-out { background: var(--primary); color: #fff; }
+    .btn-sub { background: #f1f3f4; color: var(--text); font-size: 14px; padding: 11px; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-share { background: #06c755; color: #fff; font-size: 14px; padding: 12px; margin-top: 10px; display: none; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--muted); }
+    .form-control {
+      width: 100%; padding: 11px 12px; border: 1px solid var(--border);
+      border-radius: 10px; font-size: 15px; background: #fff;
+    }
+    .alert-box {
+      padding: 12px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5;
+      margin-bottom: 14px; display: none;
+    }
+    .alert-success { background: #e6f4ea; color: #137333; border: 1px solid #ceead6; }
+    .alert-error { background: #fce8e6; color: #c5221f; border: 1px solid #fad2cf; }
+    .alert-warn { background: #fef7e0; color: #b06000; border: 1px solid #fde293; }
+    .alert-late { background: #fef7e0; color: #b06000; border: 2px solid var(--warning); padding: 14px; font-weight: 600; }
+    .loading-overlay {
+      position: fixed; inset: 0; background: rgba(255,255,255,0.85);
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      z-index: 999; font-size: 15px; font-weight: 600; color: var(--primary);
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<div id="loadingOverlay" class="loading-overlay">
+  <div id="loadingText">正在初始化 LINE 身分與感應憑證...</div>
+</div>
+
+<div class="container">
+  <div class="header">
+    <h1>📍 打卡人生</h1>
+    <div class="sub">
+      <span id="userDisplay">載入使用者中...</span>
+      <span id="clockDisplay">--:--:--</span>
+    </div>
+    <div id="badgeContainer"></div>
+  </div>
+
+  <div id="alertBox" class="alert-box"></div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="tabPunch" onclick="switchTab('tabPunch')">靠卡打卡</button>
+    <button class="tab-btn" data-tab="tabMakeup" onclick="switchTab('tabMakeup')">忘打卡補登</button>
+    <button class="tab-btn" data-tab="tabDevice" onclick="switchTab('tabDevice')">換機綁定</button>
+    <button class="tab-btn" data-tab="tabComp" onclick="switchTab('tabComp'); loadComp()">請假／補休</button>
+    <button class="tab-btn" data-tab="tabAccount" onclick="switchTab('tabAccount')">帳號申請</button>
+  </div>
+
+  <div id="tabPunch" class="section active">
+    <div class="card">
+      <div id="accountAccessNotice" class="alert-box alert-warn"></div>
+      <div class="info-row">
+        <span class="info-label">感應場域</span>
+        <span class="info-val" id="nfcSiteDisplay">未偵測到 NFC 感應</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">晶片序號 (CTR)</span>
+        <span class="info-val" id="nfcCtrDisplay">-</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">綁定手機憑證</span>
+        <span class="info-val" id="deviceSuffixDisplay">-</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">螢幕鎖定安全要求</span>
+        <span class="info-val" id="screenLockStatusDisplay">讀取中...</span>
+      </div>
+
+      <span id="currentShift" class="shift-label"></span>
+      <div class="punch-grid">
+        <button id="btnPunchIn" class="btn btn-in" onclick="submitPunch('上班')">上班打卡</button>
+        <button id="btnPunchOut" class="btn btn-out" onclick="submitPunch('下班')">下班打卡</button>
+        <button id="btnGoOut" class="btn btn-sub" onclick="submitPunch('外出')">公務外出</button>
+        <button id="btnReturn" class="btn btn-sub" onclick="submitPunch('返回')">外出返回</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tabMakeup" class="section">
+    <div class="card">
+      <h3 style="margin-top:0;font-size:16px;">📝 忘打卡補登申請</h3>
+      <div class="form-group">
+        <label>補卡類型</label>
+        <select id="makeupType" class="form-control">
+          <option value="補上班卡">補上班卡</option>
+          <option value="補下班卡">補下班卡</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>補卡日期與時間</label>
+        <input type="datetime-local" id="makeupDateTime" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label>補卡事由說明</label>
+        <input type="text" id="makeupReason" class="form-control" placeholder="例如：早上忙於處理社區突發狀況忘記靠卡" />
+      </div>
+      <button id="btnSubmitMakeup" class="btn btn-out" onclick="submitMakeup()">送出補卡審核申請</button>
+      <button id="btnShareMakeup" class="btn btn-share" onclick="shareLastFlexMessage()">📲 轉發審核卡片至 LINE 群組</button>
+    </div>
+  </div>
+
+  <div id="tabComp" class="section">
+    <div class="card">
+      <p id="compBalance" aria-live="polite"></p>
+      <form id="compForm" onsubmit="event.preventDefault(); submitComp()">
+        <label>申請類型<select id="compType" class="form-control" onchange="toggleCompStart()">
+          <option>請假</option><option>加班補休</option></select></label>
+        <label>班別日期（跨夜班選開始日）<input required type="date" id="compDate" class="form-control"></label>
+        <label id="compStartLabel">請假開始時間<input required type="time" id="compStart" class="form-control"></label>
+        <label>申請時數<input required type="number" min="0.5" step="0.5" id="compHours" class="form-control"></label>
+        <button type="submit" class="btn btn-out">送交主委簽核</button>
+      </form>
+      <h3>申請與簽核明細</h3>
+      <div id="compItems"></div>
+    </div>
+  </div>
+
+  <div id="tabDevice" class="section">
+    <div class="card">
+      <h3 style="margin-top:0;font-size:16px;">📱 更換手機重新綁定申請</h3>
+      <p style="font-size:13px;color:var(--muted);line-height:1.5;margin-top:0;">
+        為防止代打卡，每位員工僅限綁定一支個人手機。送出申請後帳號將暫時鎖定，待管理員於 LINE 點擊核准後即可恢復打卡。
+      </p>
+      <div class="info-row">
+        <span class="info-label">目前手機憑證末六碼</span>
+        <span class="info-val" id="newDeviceSuffixDisplay">-</span>
+      </div>
+      <div class="info-row" style="margin-bottom:12px;">
+        <span class="info-label">偵測裝置環境</span>
+        <span class="info-val" id="deviceModelDisplay">-</span>
+      </div>
+      <div class="form-group">
+        <label>換機原因</label>
+        <input type="text" id="deviceChangeReason" class="form-control" placeholder="例如：更換新手機 iPhone 16" />
+      </div>
+      <button id="btnSubmitDeviceChange" class="btn btn-danger" onclick="submitDeviceChange()">送出換機綁定審核</button>
+      <button id="btnShareDevice" class="btn btn-share" onclick="shareLastFlexMessage()">📲 轉發審核卡片至 LINE 群組</button>
+    </div>
+  </div>
+
+  <div id="tabAccount" class="section">
+    <div class="card">
+      <h3 style="margin-top:0;font-size:16px;">🧾 員工帳號申請</h3>
+      <div id="accountApplicationStatus" class="alert-box alert-warn" style="display:block;">正在讀取 LINE 帳號狀態…</div>
+      <form id="accountApplicationForm" onsubmit="event.preventDefault(); submitAccountApplication()">
+        <div class="form-group">
+          <label for="employeeEmail">工作 Email</label>
+          <input id="employeeEmail" class="form-control" type="email" maxlength="254" autocomplete="email" required />
+        </div>
+        <div class="form-group">
+          <label for="employeeName">姓名</label>
+          <input id="employeeName" class="form-control" type="text" maxlength="80" autocomplete="name" required />
+        </div>
+        <div class="form-group">
+          <label for="employeeTitle">職稱／戶號（選填）</label>
+          <input id="employeeTitle" class="form-control" type="text" maxlength="80" placeholder="例如：管理員、A棟 3 樓" />
+        </div>
+        <button id="btnSubmitAccountApplication" class="btn btn-out" type="submit">送出帳號申請</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ================= 請填入您的實際部署參數 =================
+  // 上線時填入此版本的 GAS Web App 網址。LIFF ID 由後端公開設定提供。
+  const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycby6gjbCQFdp2mkrzzRHUAfOK8UBPRAn8cnhHhUv5OANC248p0gar160GV6M-Xr93p2aOA/exec';
+  // ==========================================================
+
+  let userProfile = null;
+  let deviceToken = '';
+  let nfcParams = { site: '', uid: '', ctr: '', cmac: '', hasValidParams: false };
+  let nfcServerConfigured = false;
+  let accountStatus = '未確認';
+  let accountApplicationBusy = false;
+  let securityConfig = { REQUIRE_SCREEN_LOCK: false };
+  let cachedNonce = '';
+  let nonceFetchedAt = 0;
+  let lastFlexMessage = null;
+  let startupStage = '準備啟動';
+  let liffInitDiagnostic = '';
+  const STARTUP_STEP_TIMEOUT_MS = 20000;
+
+  window.addEventListener('DOMContentLoaded', async () => {
+    startLocalClock();
+    deviceToken = getOrCreateDeviceToken();
+    document.getElementById('deviceSuffixDisplay').textContent = '#' + deviceToken.slice(-6);
+    document.getElementById('newDeviceSuffixDisplay').textContent = '#' + deviceToken.slice(-6);
+    document.getElementById('deviceModelDisplay').textContent = getReadableDeviceInfo();
+
+    try {
+      if (GAS_WEB_APP_URL.includes('YOUR_SCRIPT_ID')) throw new Error('尚未設定打卡服務網址。');
+      setStartupStage('讀取 GAS LIFF 設定');
+      const configResponse = await withStartupTimeout(
+        fetch(GAS_WEB_APP_URL + '?action=clientConfig'),
+        '讀取 GAS LIFF 設定'
+      );
+      if (!configResponse.ok) throw new Error('GAS 設定回應 HTTP ' + configResponse.status);
+      const config = await withStartupTimeout(configResponse.json(), '解析 GAS LIFF 設定');
+      if (!config.liffId) throw new Error('尚未設定 LIFF ID。');
+      setStartupStage('初始化 LINE LIFF');
+      liffInitDiagnostic = collectLiffInitDiagnostic();
+      await withStartupTimeout(liff.init({ liffId: config.liffId }), '初始化 LINE LIFF');
+      setStartupStage('確認 LINE 登入狀態');
+      if (!liff.isLoggedIn()) {
+        setStartupStage('等待 LINE 登入');
+        liff.login();
+        return;
+      }
+      setStartupStage('取得 LINE 使用者資料');
+      userProfile = await withStartupTimeout(liff.getProfile(), '取得 LINE 使用者資料');
+      document.getElementById('userDisplay').textContent = userProfile.displayName;
+      parseNfcQueryParams();
+      setStartupStage('讀取打卡與 NFC 設定');
+      await withStartupTimeout(refreshNonceAndConfig(), '讀取打卡與 NFC 設定');
+      setStartupStage('完成');
+      const params = entryParams();
+      const reqId = params.get('reqId');
+      const decision = params.get('decision');
+      if (reqId && ['APPROVE','REJECT'].includes(decision)) {
+        const label = decision === 'APPROVE' ? '核准' : '駁回';
+        if (window.confirm('確定要' + label + '申請單 ' + reqId + '？')) {
+          const review = await callGasApi({action: 'review', reqId, decision});
+          showAlert(review.status === 'ok' ? 'success' : 'error', review.message);
+        }
+      }
+    } catch (err) {
+      const diagnostic = startupStage === '初始化 LINE LIFF' && liffInitDiagnostic
+        ? '\n診斷：' + liffInitDiagnostic
+        : '';
+      showAlert('error', '啟動卡在「' + startupStage + '」：' + (err && err.message ? err.message : String(err)) + diagnostic);
+    } finally {
+      hideLoading();
+    }
+  });
+
+  function setStartupStage(stage) {
+    startupStage = stage;
+    const loadingText = document.getElementById('loadingText');
+    if (loadingText) loadingText.textContent = '正在' + stage + '...';
+  }
+
+  function collectLiffInitDiagnostic() {
+    const details = [];
+    details.push('頁面主機=' + (window.location.hostname || '未知'));
+    let inFrame = '無法判斷';
+    try { inFrame = window.self !== window.top ? '是' : '否'; } catch (err) { inFrame = '是'; }
+    details.push('頁面在 iframe=' + inFrame);
+    details.push('LIFF SDK=' + (typeof liff !== 'undefined' && typeof liff.init === 'function' ? '已載入' : '未載入'));
+    try {
+      details.push('LIFF state=' + (new URLSearchParams(window.location.search).has('liff.state') ? '有' : '無'));
+    } catch (err) {
+      details.push('LIFF state=無法判斷');
+    }
+    try {
+      const referrerHost = document.referrer ? new URL(document.referrer).hostname : '';
+      details.push('來源主機=' + (referrerHost || '無'));
+    } catch (err) {
+      details.push('來源主機=無法判斷');
+    }
+    return details.join('；');
+  }
+
+  function withStartupTimeout(promise, stepName) {
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(stepName + '逾時（20 秒）')), STARTUP_STEP_TIMEOUT_MS);
+    });
+    return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timeoutId));
+  }
+
+  function entryParams() {
+    let params = new URLSearchParams(window.location.search);
+    const liffState = params.get('liff.state');
+    if (liffState) {
+      const decodedState = liffState;
+      const stateQueryIdx = decodedState.indexOf('?');
+      if (stateQueryIdx !== -1) params = new URLSearchParams(decodedState.substring(stateQueryIdx));
+    }
+    return params;
+  }
+
+  function parseNfcQueryParams() {
+    const params = entryParams();
+    const site = (params.get('site') || '').trim();
+    const uid = (params.get('uid') || '').trim().toUpperCase();
+    const ctr = (params.get('ctr') || '').trim().toUpperCase();
+    const cmac = (params.get('cmac') || '').trim().toUpperCase();
+    const hasValid = /^[0-9A-F]{14}$/.test(uid) &&
+      /^[0-9A-F]{6}$/.test(ctr) && /^[0-9A-F]{16}$/.test(cmac) &&
+      uid !== '00000000000000' && parseInt(ctr, 16) > 0;
+    nfcParams = { site, uid, ctr, cmac, hasValidParams: hasValid };
+    syncPunchButtonState();
+    const badgeBox = document.getElementById('badgeContainer');
+    if (hasValid) {
+      const ctrInt = parseInt(ctr, 16);
+      document.getElementById('nfcSiteDisplay').textContent = site || '預設場域';
+      document.getElementById('nfcCtrDisplay').textContent = '#' + (isNaN(ctrInt) ? ctr : ctrInt);
+      badgeBox.innerHTML = nfcServerConfigured
+        ? '<span class="badge badge-ok">✅ 已讀取現場 NFC 動態加密憑證</span>'
+        : '<span class="badge badge-warn">⚠️ 已讀取感應資料，NFC 設定尚未確認</span>';
+    } else {
+      document.getElementById('nfcSiteDisplay').textContent = '⚠️ 未偵測到現場感應參數';
+      document.getElementById('nfcCtrDisplay').textContent = '請將手機靠近 NFC 貼紙開啟';
+      badgeBox.innerHTML = '<span class="badge badge-warn">⚠️ 非靠卡開啟（僅可使用補卡／換機功能）</span>';
+    }
+  }
+
+  async function refreshNonceAndConfig() {
+    const res = await callGasApi({ action: 'getNonce', lineUserId: userProfile.userId });
+    if (res.status === 'ok') {
+      cachedNonce = res.nonce;
+      nfcServerConfigured = res.nfcConfigured === true;
+      accountStatus = res.accountStatus || '未確認';
+      renderAccountApplicationStatus();
+      document.getElementById('currentShift').textContent = res.shiftLabel ? '今日排班：' + res.shiftLabel : '';
+      if (!nfcServerConfigured) {
+        document.getElementById('nfcCtrDisplay').textContent = '貼紙待配置，補卡與換機仍可使用';
+        document.getElementById('badgeContainer').innerHTML = '<span class="badge badge-warn">⚠️ NFC 貼紙或金鑰尚未完成管理員設定</span>';
+      } else if (nfcParams.hasValidParams) {
+        document.getElementById('badgeContainer').innerHTML = '<span class="badge badge-ok">✅ 已讀取現場 NFC 動態加密憑證</span>';
+      }
+      syncPunchButtonState();
+      nonceFetchedAt = Date.now();
+      if (res.securityConfig) securityConfig = res.securityConfig;
+      updateSecurityBadge();
+      if (accountStatus === '未申請' || accountStatus === '待審核') switchTab('tabAccount');
+      return cachedNonce;
+    } else {
+      throw new Error(res.message || '無法取得驗證憑證');
+    }
+  }
+
+  function updateSecurityBadge() {
+    const el = document.getElementById('screenLockStatusDisplay');
+    const badgeBox = document.getElementById('badgeContainer');
+    const existingLockBadge = document.getElementById('lockBadge');
+    if (existingLockBadge) existingLockBadge.remove();
+    if (securityConfig.REQUIRE_SCREEN_LOCK) {
+      el.textContent = '🔒 已開啟（送出前須驗證指紋/臉部/密碼）';
+      el.style.color = '#c5221f';
+      badgeBox.insertAdjacentHTML('beforeend', '<span id="lockBadge" class="badge badge-lock">🔒 需手機螢幕鎖定驗證</span>');
+    } else {
+      el.textContent = '⚡ 關閉（靠卡一鍵快速打卡）';
+      el.style.color = '#137333';
+    }
+  }
+
+  async function verifyPhoneScreenLock() {
+    if (!window.PublicKeyCredential) throw new Error('手機不支援螢幕鎖定驗證。');
+    const challenge = new Uint8Array(32);
+    window.crypto.getRandomValues(challenge);
+    const savedCredIdB64 = localStorage.getItem('PUNCH_WEBAUTHN_CRED_ID');
+    try {
+      if (savedCredIdB64) {
+        const credBytes = base64ToUint8Array(savedCredIdB64);
+        const assertion = await navigator.credentials.get({
+          publicKey: { challenge: challenge, allowCredentials: [{ id: credBytes, type: 'public-key', transports: ['internal'] }], userVerification: 'required', timeout: 60000 }
+        });
+        return Boolean(assertion);
+      }
+    } catch (e) {
+      if (e.name === 'NotAllowedError') throw e;
+      localStorage.removeItem('PUNCH_WEBAUTHN_CRED_ID');
+    }
+    const userIdBytes = new TextEncoder().encode(userProfile.userId.slice(0, 32));
+    const credential = await navigator.credentials.create({
+      publicKey: {
+        challenge: challenge, rp: { name: '打卡人生考勤系統' },
+        user: { id: userIdBytes, name: userProfile.userId, displayName: userProfile.displayName },
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
+        timeout: 60000
+      }
+    });
+    if (credential && credential.rawId) {
+      localStorage.setItem('PUNCH_WEBAUTHN_CRED_ID', uint8ArrayToBase64(new Uint8Array(credential.rawId)));
+      return true;
+    }
+    return false;
+  }
+
+  function renderAccountApplicationStatus() {
+    const statusBox = document.getElementById('accountApplicationStatus');
+    const punchNotice = document.getElementById('accountAccessNotice');
+    const form = document.getElementById('accountApplicationForm');
+    const messages = {
+      '未確認': '尚未取得帳號狀態，請重新載入頁面。',
+      '未申請': '目前尚未建立帳號。工作 Email 尚未由系統驗證，管理員核對資料並完成班別與場域設定、啟用帳號後，才可打卡。',
+      '待審核': '申請已送出，請等待管理員完成班別與場域設定並啟用帳號。',
+      '啟用中': '此 LINE 已有啟用中的員工帳號，不需要再次申請。',
+      '換機待審核': '帳號正在等待換機審核，請聯繫管理員。',
+      '已停權': '此帳號已停權，請聯繫管理員。',
+      '已離職': '此帳號已標記離職，請聯繫管理員。'
+    };
+    statusBox.textContent = messages[accountStatus] || ('目前帳號狀態：' + accountStatus + '。請聯繫管理員。');
+    const mayApply = accountStatus === '未申請';
+    Array.from(form.elements).forEach(element => { element.disabled = !mayApply || accountApplicationBusy; });
+    if (accountStatus === '啟用中') {
+      punchNotice.style.display = 'none';
+    } else {
+      punchNotice.textContent = accountStatus === '未申請'
+        ? '尚未申請員工帳號，請先完成「帳號申請」。'
+        : '目前帳號狀態為「' + accountStatus + '」，管理員啟用前無法打卡。';
+      punchNotice.style.display = 'block';
+    }
+    syncPunchButtonState();
+  }
+
+  async function submitAccountApplication() {
+    if (accountApplicationBusy || accountStatus !== '未申請') return;
+    const payload = {
+      action: 'submitAccountApplication',
+      employeeEmail: document.getElementById('employeeEmail').value.trim(),
+      employeeName: document.getElementById('employeeName').value.trim(),
+      employeeTitle: document.getElementById('employeeTitle').value.trim()
+    };
+    accountApplicationBusy = true;
+    renderAccountApplicationStatus();
+    showLoading('正在送出帳號申請...');
+    try {
+      const res = await callGasApi(payload);
+      if (res.status !== 'ok') throw new Error(res.message || '帳號申請未完成。');
+      accountStatus = res.accountStatus || '待審核';
+      document.getElementById('accountApplicationForm').reset();
+      renderAccountApplicationStatus();
+      showAlert('success', res.message || '帳號申請已送出。');
+    } catch (err) {
+      showAlert('error', err.message || '帳號申請失敗。');
+    } finally {
+      accountApplicationBusy = false;
+      renderAccountApplicationStatus();
+      hideLoading();
+    }
+  }
+
+  // Zero-Quota 員工帳號代發審核卡片：群組內直接 sendMessages，外部靠卡自動開啟 shareTargetPicker
+  async function dispatchFlexOrShare(flexMessage, shareBtnId) {
+    lastFlexMessage = flexMessage;
+    const context = liff.getContext();
+    const isInChat = context && (context.type === 'group' || context.type === 'room' || context.type === 'utou');
+    if (isInChat && liff.isApiAvailable('sendMessages')) {
+      try {
+        await liff.sendMessages([flexMessage]);
+        showAlert('success', '✅ 審核卡片已直接發送至當前 LINE 群組！');
+        return;
+      } catch (e) { console.warn('sendMessages 失敗，改用 Share Target Picker', e); }
+    }
+    if (liff.isApiAvailable('shareTargetPicker')) {
+      try {
+        const res = await liff.shareTargetPicker([flexMessage]);
+        if (res) showAlert('success', '✅ 審核卡片已成功轉發至指定 LINE 群組！');
+        else {
+          showAlert('warn', '⚠️ 您取消了轉發。請點擊下方「轉發審核卡片」按鈕重新發送至管理群組。');
+          if (shareBtnId) document.getElementById(shareBtnId).style.display = 'block';
+        }
+        return;
+      } catch (e) { console.error('shareTargetPicker 失敗', e); }
+    }
+    showAlert('error', '請複製審核單號並通知管理員於後台處理。');
+    if (shareBtnId) document.getElementById(shareBtnId).style.display = 'block';
+  }
+
+  async function shareLastFlexMessage() {
+    if (!lastFlexMessage) return;
+    if (liff.isApiAvailable('shareTargetPicker')) {
+      await liff.shareTargetPicker([lastFlexMessage]);
+    }
+  }
+
+  async function submitPunch(punchType) {
+    hideAlert();
+    if (accountStatus !== '啟用中') {
+      showAlert('error', '目前帳號狀態為「' + accountStatus + '」，管理員啟用前無法打卡。');
+      return;
+    }
+    if (!nfcParams.hasValidParams || !nfcServerConfigured) {
+      showAlert('error', nfcParams.hasValidParams
+        ? '現場 NFC 尚未完成管理員設定，暫時無法打卡。'
+        : '無法打卡：未偵測到現場 NFC 感應參數，請靠近貼紙開啟。');
+      return;
+    }
+    setPunchButtonsDisabled(true);
+    try {
+      if (!cachedNonce || (Date.now() - nonceFetchedAt > 45000)) {
+        showLoading('正在同步安全設定...');
+        await refreshNonceAndConfig();
+      }
+      let hasScreenLock = false;
+      if (securityConfig.REQUIRE_SCREEN_LOCK) {
+        showLoading('請完成手機指紋／Face ID／鎖屏密碼驗證...');
+        try { hasScreenLock = await verifyPhoneScreenLock(); }
+        catch (authErr) {
+          hideLoading();
+          showAlert('error', '手機螢幕鎖定驗證未通過或已取消。');
+          return;
+        }
+      }
+      showLoading('正在驗證 NFC 加密簽章並寫入紀錄...');
+      const useNonce = cachedNonce; cachedNonce = '';
+      let res = await callGasApi({
+        action: 'punch', lineUserId: userProfile.userId, deviceToken: deviceToken, punchType: punchType,
+        siteCodeParam: nfcParams.site, uidHex: nfcParams.uid, ctrHex: nfcParams.ctr, cmacHex: nfcParams.cmac,
+        hasScreenLock: hasScreenLock, nonce: useNonce
+      });
+      if (res.status === 'error' && res.code === 'DEVICE_UNBOUND') {
+        showLoading('偵測到首次使用，正在自動綁定您的個人手機...');
+        const bindRes = await callGasApi({ action: 'bindFirstDevice', lineUserId: userProfile.userId, deviceToken: deviceToken, lineDisplayName: userProfile.displayName });
+        if (bindRes.status === 'ok') {
+          const retryNonce = await refreshNonceAndConfig(); cachedNonce = '';
+          showLoading('手機綁定完成，正在送出打卡...');
+          res = await callGasApi({
+            action: 'punch', lineUserId: userProfile.userId, deviceToken: deviceToken, punchType: punchType,
+            siteCodeParam: nfcParams.site, uidHex: nfcParams.uid, ctrHex: nfcParams.ctr, cmacHex: nfcParams.cmac,
+            hasScreenLock: hasScreenLock, nonce: retryNonce
+          });
+        } else { res = bindRes; }
+      }
+      if (res.status === 'ok') {
+        if (res.isLate) {
+          showAlert('late', '⚠️【遲到提醒】' + (res.empTitle || '') + ' 您好，您今日上班打卡時間為 ' + res.serverTime + '，已超過應上班時間 ' + res.lateMinutes + ' 分鐘，系統已自動登記為「遲到」。\n(流水號：' + res.seqNum + ')');
+        } else {
+          showAlert('success', '✅ ' + res.message + '\n流水號：' + res.seqNum + '\n伺服器時間：' + res.serverTime + '（歸屬日：' + res.shiftDate + '）');
+        }
+        const context = liff.getContext();
+        if (!res.replay && context && (context.type === 'group' || context.type === 'room') && liff.isApiAvailable('sendMessages')) {
+          liff.sendMessages([{ type: 'text', text: '📍【打卡報備】' + (res.empTitle || userProfile.displayName) + ' 已於 ' + res.serverTime + ' 完成「' + punchType + '」打卡' + (res.isLate ? '（遲到 ' + res.lateMinutes + ' 分鐘）' : '。') }]).catch(() => {});
+        }
+      } else {
+        showAlert('error', '❌ ' + (res.message || '打卡失敗'));
+        if (res.code === 'DEVICE_MISMATCH') switchTab('tabDevice');
+        refreshNonceAndConfig().catch(() => {});
+      }
+    } catch (err) {
+      showAlert('error', '系統連線異常：' + err.message);
+    } finally {
+      hideLoading(); syncPunchButtonState();
+    }
+  }
+
+  async function submitMakeup() {
+    const makeupType = document.getElementById('makeupType').value;
+    const rawDt = document.getElementById('makeupDateTime').value;
+    const reason = document.getElementById('makeupReason').value.trim();
+    if (!rawDt) { showAlert('error', '請選擇要補登的日期與時間！'); return; }
+    if (!reason) { showAlert('error', '請填寫補卡事由說明！'); return; }
+    const formattedDt = rawDt.replace('T', ' ') + ':00';
+    showLoading('正在送出補卡審核申請...');
+    try {
+      const res = await callGasApi({ action: 'submitMakeupPunch', lineUserId: userProfile.userId, makeupType: makeupType, targetDateTime: formattedDt, reason: reason });
+      if (res.status === 'ok') {
+        showAlert('success', '✅ ' + res.message + '（申請單號：' + res.reqId + '）');
+        document.getElementById('makeupReason').value = '';
+        if (res.flexMessage) await dispatchFlexOrShare(res.flexMessage, 'btnShareMakeup');
+      } else { showAlert('error', '❌ ' + (res.message || '補卡申請送出失敗')); }
+    } catch (err) { showAlert('error', '系統連線異常：' + err.message); }
+    finally { hideLoading(); }
+  }
+
+  async function submitDeviceChange() {
+    const reason = document.getElementById('deviceChangeReason').value.trim();
+    if (!reason) { showAlert('error', '請填寫換機原因！'); return; }
+    showLoading('正在送出換機審核...');
+    try {
+      const res = await callGasApi({ action: 'submitDeviceChange', lineUserId: userProfile.userId, newDeviceToken: deviceToken, deviceInfo: getReadableDeviceInfo(), reason: reason });
+      if (res.status === 'ok') {
+        showAlert('success', '✅ ' + res.message + '（單號：' + res.reqId + '）');
+        document.getElementById('deviceChangeReason').value = '';
+        if (res.flexMessage) await dispatchFlexOrShare(res.flexMessage, 'btnShareDevice');
+      } else { showAlert('error', '❌ ' + (res.message || '換機申請失敗')); }
+    } catch (err) { showAlert('error', '系統連線異常：' + err.message); }
+    finally { hideLoading(); }
+  }
+
+  function toggleCompStart() {
+    const leave = document.getElementById('compType').value === '請假';
+    document.getElementById('compStartLabel').hidden = !leave;
+    document.getElementById('compStart').disabled = !leave;
+  }
+
+  async function loadComp() {
+    const items = document.getElementById('compItems');
+    const balance = document.getElementById('compBalance');
+    items.replaceChildren();
+    balance.textContent = '讀取中…';
+    try {
+      const data = await callGasApi({action:'compStatus'});
+      if (data.status !== 'ok') throw new Error(data.message);
+      balance.textContent = '可用補休 ' + data.balance + ' 小時';
+      items.replaceChildren();
+      if (!data.items.length) items.textContent = '目前沒有申請紀錄。';
+      for (const row of data.items) {
+        const item = document.createElement('p');
+        const clock = minute => (minute >= 1440 ? '次日 ' : '') + String(Math.floor(minute/60)%24).padStart(2,'0') + ':' + String(minute%60).padStart(2,'0');
+        const interval = row.type === '請假' ? ' ' + clock(Number(row.start)) + '–' + clock(Number(row.start) + row.hours * 60) : '';
+        item.textContent = [row.employee, row.date + interval, row.type, row.hours + ' 小時', row.status].join(' · ');
+        if (data.chair && row.status === '待審核') {
+          for (const [decision,label] of [['APPROVE','核准'],['REJECT','駁回']]) {
+            const button = document.createElement('button');
+            button.textContent = label;
+            button.onclick = () => compMutation({action:'compReview',reqId:row.id,decision});
+            item.appendChild(button);
+          }
+        }
+        items.appendChild(item);
+      }
+    } catch (e) { balance.textContent = e.message; }
+  }
+
+  let compAttempt = null;
+  let compBusy = false;
+  async function submitComp() {
+    const value = id => document.getElementById(id).value;
+    const form = {type:value('compType'), date:value('compDate'), hours:Number(value('compHours')), start:value('compStart')};
+    const signature = JSON.stringify(form);
+    if (!compAttempt || compAttempt.signature !== signature) {
+      compAttempt = {signature, key:Date.now().toString(36) + '-' + Array.from(crypto.getRandomValues(new Uint32Array(2))).join('-')};
+    }
+    await compMutation({action:'compSubmit', requestKey:compAttempt.key, ...form});
+  }
+
+  async function compMutation(payload) {
+    if (compBusy) return;
+    compBusy = true;
+    showLoading('處理中…');
+    try {
+      const data = await callGasApi(payload);
+      if (data.status !== 'ok') throw new Error(data.message);
+      if (payload.action === 'compSubmit') {
+        compAttempt = null;
+        document.getElementById('compForm').reset();
+        toggleCompStart();
+      }
+      showAlert('success', data.message);
+      await loadComp();
+      await refreshNonceAndConfig();
+    } catch (e) { showAlert('error', e.message); }
+    finally { compBusy = false; hideLoading(); }
+  }
+
+  async function callGasApi(payload) {
+    const idToken = liff.getIDToken();
+    if (!idToken) throw new Error('請確認 LIFF 已開啟 openid 權限並重新登入。');
+    payload.idToken = idToken;
+    const response = await fetch(GAS_WEB_APP_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload)
+    });
+    return await response.json();
+  }
+
+  function getOrCreateDeviceToken() {
+    let token = localStorage.getItem('PUNCH_DEVICE_TOKEN');
+    if (!token) {
+      token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'dev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 12);
+      localStorage.setItem('PUNCH_DEVICE_TOKEN', token);
+    }
+    return token;
+  }
+
+  function getReadableDeviceInfo() {
+    const ua = navigator.userAgent || '';
+    if (/iPhone/i.test(ua)) return 'iPhone / LINE WebView';
+    if (/iPad/i.test(ua)) return 'iPad / LINE WebView';
+    if (/Android/i.test(ua)) {
+      const match = ua.match(/Android\s([0-9.]+);\s([^;)]+)/);
+      return match ? (match[2].trim() + ' (Android ' + match[1] + ')') : 'Android / LINE WebView';
+    }
+    return 'Desktop / Browser';
+  }
+
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+    document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === tabId));
+  }
+
+  function showAlert(type, msg) {
+    const box = document.getElementById('alertBox');
+    box.className = 'alert-box alert-' + type;
+    box.style.whiteSpace = 'pre-line';
+    box.textContent = msg;
+    box.style.display = 'block';
+  }
+
+  function hideAlert() { document.getElementById('alertBox').style.display = 'none'; }
+  function showLoading(text) { document.getElementById('loadingText').textContent = text; document.getElementById('loadingOverlay').classList.remove('hidden'); }
+  function hideLoading() { document.getElementById('loadingOverlay').classList.add('hidden'); }
+  function syncPunchButtonState() { setPunchButtonsDisabled(accountStatus !== '啟用中' || !nfcParams.hasValidParams || !nfcServerConfigured); }
+  function setPunchButtonsDisabled(disabled) { ['btnPunchIn', 'btnPunchOut', 'btnGoOut', 'btnReturn'].forEach(id => { document.getElementById(id).disabled = disabled; }); }
+  function startLocalClock() { const update = () => { document.getElementById('clockDisplay').textContent = new Date().toTimeString().slice(0, 8); }; update(); setInterval(update, 1000); }
+  function uint8ArrayToBase64(bytes) { let bin = ''; for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]); return window.btoa(bin); }
+  function base64ToUint8Array(b64) { const bin = window.atob(b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return bytes; }
+</script>
+</body>
+</html>
