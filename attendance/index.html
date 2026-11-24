@@ -140,6 +140,8 @@
         <button id="btnGoOut" class="btn btn-sub" onclick="submitPunch('外出')">公務外出</button>
         <button id="btnReturn" class="btn btn-sub" onclick="submitPunch('返回')">外出返回</button>
       </div>
+      <button id="sharePunch" type="button" hidden>分享到群組</button>
+      <span id="shareStatus" role="status"></span>
     </div>
   </div>
 
@@ -536,6 +538,10 @@
   }
 
   async function submitPunch(punchType) {
+    const share = document.getElementById('sharePunch');
+    const status = document.getElementById('shareStatus');
+    share.hidden = true;
+    status.textContent = '';
     hideAlert();
     if (accountStatus !== '啟用中') {
       showAlert('error', '目前帳號狀態為「' + accountStatus + '」，管理員啟用前無法打卡。');
@@ -590,8 +596,22 @@
           showAlert('success', '✅ ' + res.message + '\n流水號：' + res.seqNum + '\n伺服器時間：' + res.serverTime + '（歸屬日：' + res.shiftDate + '）');
         }
         const context = liff.getContext();
-        if (!res.replay && context && (context.type === 'group' || context.type === 'room') && liff.isApiAvailable('sendMessages')) {
-          liff.sendMessages([{ type: 'text', text: '📍【打卡報備】' + (res.empTitle || userProfile.displayName) + ' 已於 ' + res.serverTime + ' 完成「' + punchType + '」打卡' + (res.isLate ? '（遲到 ' + res.lateMinutes + ' 分鐘）' : '。') }]).catch(() => {});
+        if (!res.replay && res.allowGroupReport === true) {
+          const messages = [{ type: 'text', text: '📍【打卡報備】' + (res.empTitle || userProfile.displayName) + ' 已於 ' + res.serverTime + ' 完成「' + punchType + '」打卡' + (res.isLate ? '（遲到 ' + res.lateMinutes + ' 分鐘）' : '。') }];
+          let sent = false;
+          if (context && ['group','room'].includes(context.type) && liff.isApiAvailable('sendMessages')) {
+            try { await liff.sendMessages(messages); sent = true; } catch { status.textContent = '群組報備尚未送出。'; }
+          }
+          if (!sent && liff.isApiAvailable('shareTargetPicker')) {
+            share.hidden = false;
+            share.onclick = async () => {
+              share.disabled = true;
+              try {
+                if (await liff.shareTargetPicker(messages)) { share.hidden = true; status.textContent = '已分享打卡報備。'; }
+              } catch { status.textContent = '分享失敗，可再試一次。'; }
+              finally { share.disabled = false; }
+            };
+          } else if (!sent) status.textContent = '目前環境無法分享打卡報備。';
         }
       } else {
         showAlert('error', '❌ ' + (res.message || '打卡失敗'));
@@ -656,6 +676,13 @@
       balance.textContent = '可用補休 ' + data.balance + ' 小時';
       items.replaceChildren();
       if (!data.items.length) items.textContent = '目前沒有申請紀錄。';
+      const pending = document.createElement('section');
+      if (data.chair) {
+        const heading = document.createElement('h3');
+        heading.textContent = '主委待審（' + data.items.filter(row => row.status === '待審核').length + '）';
+        pending.appendChild(heading);
+        items.prepend(pending);
+      }
       for (const row of data.items) {
         const item = document.createElement('p');
         const clock = minute => (minute >= 1440 ? '次日 ' : '') + String(Math.floor(minute/60)%24).padStart(2,'0') + ':' + String(minute%60).padStart(2,'0');
@@ -669,7 +696,7 @@
             item.appendChild(button);
           }
         }
-        items.appendChild(item);
+        (data.chair && row.status === '待審核' ? pending : items).appendChild(item);
       }
     } catch (e) { balance.textContent = e.message; }
   }
