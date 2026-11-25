@@ -110,6 +110,7 @@
     <button class="tab-btn" data-tab="tabMakeup" onclick="switchTab('tabMakeup')">忘打卡補登</button>
     <button class="tab-btn" data-tab="tabDevice" onclick="switchTab('tabDevice')">換機綁定</button>
     <button class="tab-btn" data-tab="tabComp" onclick="switchTab('tabComp'); loadComp()">請假／補休</button>
+    <button class="tab-btn" data-tab="tabAttendance" onclick="switchTab('tabAttendance'); loadAttendance()">出勤查詢</button>
     <button class="tab-btn" data-tab="tabAccount" onclick="switchTab('tabAccount')">帳號申請</button>
   </div>
 
@@ -177,7 +178,7 @@
         <label>班別日期（跨夜班選開始日）<input required type="date" id="compDate" class="form-control"></label>
         <label id="compStartLabel">請假開始時間<input required type="time" id="compStart" class="form-control"></label>
         <label>申請時數<input required type="number" min="0.5" step="0.5" id="compHours" class="form-control"></label>
-        <button type="submit" class="btn btn-out">送交主委簽核</button>
+        <button type="submit" class="btn btn-out">送交簽核</button>
       </form>
       <h3>申請與簽核明細</h3>
       <div id="compItems"></div>
@@ -207,6 +208,9 @@
     </div>
   </div>
 
+  <div id="tabAttendance" class="section"><div class="card">
+    <h3>今日出勤</h3><div id="attendanceResults" aria-live="polite"></div>
+  </div></div>
   <div id="tabAccount" class="section">
     <div class="card">
       <h3 style="margin-top:0;font-size:16px;">🧾 員工帳號申請</h3>
@@ -371,7 +375,7 @@
     } else {
       document.getElementById('nfcSiteDisplay').textContent = '⚠️ 未偵測到現場感應參數';
       document.getElementById('nfcCtrDisplay').textContent = '請將手機靠近 NFC 貼紙開啟';
-      badgeBox.innerHTML = '<span class="badge badge-warn">⚠️ 非靠卡開啟（僅可使用補卡／換機功能）</span>';
+      badgeBox.innerHTML = '<span class="badge badge-warn">⚠️ 直接開啟可查詢及申請，現場打卡請重新靠卡</span>';
     }
   }
 
@@ -665,6 +669,58 @@
     document.getElementById('compStart').disabled = !leave;
   }
 
+  async function loadAttendance() {
+    const root = document.getElementById('attendanceResults');
+    root.textContent = '讀取中…';
+    try {
+      const data = await callGasApi({action:'attendanceStatus'});
+      if (data.status !== 'ok') throw new Error(data.message);
+      root.textContent = '班別日期　' + data.today;
+      const present = data.detailRows.filter(row => row[2] === data.today && (row[7] || row[8]));
+      if (present.length) {
+        const table = document.createElement('table');
+        table.style.cssText = 'width:100%;text-align:left;overflow-wrap:anywhere';
+        const header = table.createTHead().insertRow();
+        for (const label of ['人員', '上班時間', '下班時間']) {
+          const cell = document.createElement('th');
+          cell.scope = 'col';
+          cell.textContent = label;
+          header.appendChild(cell);
+        }
+        const body = table.createTBody();
+        const clock = value => value.startsWith(data.today + ' ') ? value.slice(11, 16) : value.slice(0, 16);
+        for (const row of present) {
+          const tr = body.insertRow();
+          for (const value of [row[1] || row[0], row[7] ? clock(row[7]) : '缺上班卡', row[8] ? clock(row[8]) : '尚未打下班卡']) {
+            tr.insertCell().textContent = value;
+          }
+        }
+        root.appendChild(table);
+      } else {
+        const empty = document.createElement('p');
+        empty.textContent = '今日尚無出勤紀錄。';
+        root.appendChild(empty);
+      }
+      const heading = document.createElement('h4');
+      heading.textContent = '本月出勤';
+      root.appendChild(heading);
+      for (const [email, name, , days] of data.summaryRows) {
+        const rows = data.detailRows.filter(r => r[0] === email).reverse();
+        const current = rows.find(r => r[2] === data.today);
+        const block = document.createElement('details');
+        const title = document.createElement('summary');
+        title.textContent = (name || email) + '｜本月出勤 ' + days + ' 天｜今日班別：' + (current ? current[10] : '無資料');
+        block.appendChild(title);
+        for (const r of rows) {
+          const line = document.createElement('p');
+          line.textContent = r[2] + '　' + r[10] + '｜上班 ' + (r[7] || '—') + '｜下班 ' + (r[8] || '—');
+          block.appendChild(line);
+        }
+        root.appendChild(block);
+      }
+    } catch (err) { root.textContent = err.message; }
+  }
+
   async function loadComp() {
     const items = document.getElementById('compItems');
     const balance = document.getElementById('compBalance');
@@ -679,7 +735,7 @@
       const pending = document.createElement('section');
       if (data.chair) {
         const heading = document.createElement('h3');
-        heading.textContent = '主委待審（' + data.items.filter(row => row.status === '待審核').length + '）';
+        heading.textContent = '待簽核（' + data.items.filter(row => row.status === '待審核').length + '）';
         pending.appendChild(heading);
         items.prepend(pending);
       }
